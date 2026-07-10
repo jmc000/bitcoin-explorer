@@ -1,9 +1,12 @@
 import requests
 import json
 import os
+import logging
+
 from dotenv import load_dotenv
 from contextlib import contextmanager
-import logging
+from requests.adapters import HTTPAdapter, Retry
+from requests.exceptions import HTTPError
 
 # ------------------------------------------------------------
 class GetBlockClient:
@@ -17,6 +20,10 @@ class GetBlockClient:
             "id": "getblock.io"
         }
         self._rpc_url = None
+        self._retries = Retry(total=5, backoff_factor=1)
+        self._session = self._create_session()
+        logging.basicConfig(filename="output.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
     
     @property
     def rpc_url(self) -> str:
@@ -32,21 +39,26 @@ class GetBlockClient:
     def _fail_on_error(self):
         try:
             yield
-        except (requests.exceptions.RequestException, OSError, RuntimeError, AttributeError, ValidationError) as e:
+        except (requests.exceptions.RequestException, OSError, RuntimeError, AttributeError) as e:
             logging.error(f"Error: {e}")
-            raise e
     
+    def _create_session(self) -> requests.Session:
+        s = requests.Session()
+        s.mount('https://', HTTPAdapter(max_retries=self._retries))
+        return s
+
     def call_rpc(self, verb: str, method: str, params: list = []):
-        payload = json.dumps({**self._payload, 'method': method, 'params': params})
-        response = requests.request(
-            verb, 
-            self.rpc_url, 
-            headers=self._headers, 
-            data=payload
-        )
-        response.raise_for_status()
-        #TODO: Handle error cases
-        return response.json()['result']
+        logging.info(f"Calling RPC:  {verb}  {method}  with params: {params}")
+        with self._fail_on_error():
+            payload = json.dumps({**self._payload, 'method': method, 'params': params})
+            response = self._session.request(
+                verb, 
+                self.rpc_url, 
+                headers=self._headers, 
+                data=payload
+            )
+            response.raise_for_status()
+            return response.json()['result']
 
 # ------------------------------------------------------------
 class Blocks(GetBlockClient):
