@@ -1,3 +1,4 @@
 .env
 roadmap.md
-output.log
+var/
+src/bitcoin_indexer/__pycache__/
