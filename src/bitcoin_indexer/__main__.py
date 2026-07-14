@@ -1,9 +1,7 @@
+import logger
 import rpc as rpc
 import db as db
-import logger
 import json
-
-from binascii import unhexlify
 
 from sqlalchemy.orm import Session
 

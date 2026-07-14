@@ -3,7 +3,7 @@ import logger
 import context_manager
 
 from dotenv import load_dotenv
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, create_engine, event
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
@@ -126,16 +126,23 @@ def get_database_url() -> str:
     return os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
 
 def create_db_engine(url: str | None = None):
-    url = url or get_database_url()
-    connect_args = {}
-    if url.startswith("sqlite"):
-        # Required when the engine is shared across threads?
-        connect_args["check_same_thread"] = False
-    return create_engine(url, echo=False, connect_args=connect_args)
+    with context_manager.fail_on_error():
+        logger.info(f"Creating Database Engine at {url}")
+        url = url or get_database_url()
+        connect_args = {}
+        if url.startswith("sqlite"):
+            # Required when the engine is shared across threads?
+            connect_args["check_same_thread"] = False
+        logger.info("Database Engine created.")
+        return create_engine(url, echo=False, connect_args=connect_args)
 
 def create_tables(engine: Engine) -> None:
     #TODO: for later use Alembic instead
-    Base.metadata.create_all(engine)
+    with context_manager.fail_on_error():
+        logger.info(f"Creating Tables...")
+        Base.metadata.create_all(engine)
+        table_names = inspect(engine).get_table_names()
+        logger.info(f"Tables created: {table_names}")
 
 def set_up_db() -> Engine:
     db_url=get_database_url()
@@ -147,38 +154,44 @@ def set_up_db() -> Engine:
 # Block
 # --------------
 def insert_blocks(blocks: list[Blocks], s: Session):
-    with context_manager.fail_on_db_error(s):
+    with context_manager.fail_on_db_insert_error(s):
         s.add_all(blocks)
         s.commit()
 
 def insert_blocks_from_dict(block_list: list[dict], s: Session):
-    with context_manager.fail_on_db_error(s):
+    with context_manager.fail_on_db_insert_error(s):
+        logger.info(f"Inserting {len(block_list)} representations of the resource Blocks...")
         blocks = []
         for data in block_list:
             b = Blocks(**data)
             blocks.append(b)
+            logger.debug(f"Block height: {b.height}")
         s.add_all(blocks)
         s.commit()
+        logger.info(f"Insertion done.")
 
 
 # --------------
 # Transaction
 # --------------
 def insert_txs(txs: list[Transactions], s: sessionmaker):
-    with context_manager.fail_on_db_error(s):
+    with context_manager.fail_on_db_insert_error(s):
         s.add_all(txs)
         s.commit()
 
 def insert_transactions_from_dict(tx_list: list[dict], s: sessionmaker, block_hash : String = None):
-    with context_manager.fail_on_db_error(s):
+    with context_manager.fail_on_db_insert_error(s):
+        logger.info(f"Inserting {len(tx_list)} representations of the resource Transactions...")
         txs = []
         for data in tx_list:
             if block_hash is not None:
                 data={**data, 'blockhash': block_hash}
             t = Transactions(**data)
             txs.append(t)
+            logger.debug(f"Transaction ID: {t.txid}")
         s.add_all(txs)
         s.commit()
+        logger.info(f"Insertion done.")
 
 # --------------
 # Block + txs

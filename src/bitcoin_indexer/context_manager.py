@@ -16,7 +16,7 @@ def fail_on_error():
 
 # TODO: parse more carefully the insert (and other db) error message for better log readability
 @contextmanager
-def fail_on_db_error(session):
+def fail_on_db_insert_error(session):
     try:
         yield
     except IntegrityError as e:
