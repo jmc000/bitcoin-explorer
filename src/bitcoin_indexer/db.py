@@ -134,7 +134,7 @@ def create_db_engine(url: str | None = None):
             # Required when the engine is shared across threads?
             connect_args["check_same_thread"] = False
         logger.info("Database Engine created.")
-        return create_engine(url, echo=False, connect_args=connect_args)
+        return create_engine(url, echo=False, hide_parameters=True, connect_args=connect_args)
 
 def create_tables(engine: Engine) -> None:
     #TODO: for later use Alembic instead
@@ -158,6 +158,7 @@ def insert_blocks(blocks: list[Blocks], s: Session):
         s.add_all(blocks)
         s.commit()
 
+#TODO: this method should still take a list of dict?
 def insert_blocks_from_dict(block_list: list[dict], s: Session):
     with context_manager.fail_on_db_insert_error(s):
         logger.info(f"Inserting {len(block_list)} representations of the resource Blocks...")
@@ -197,6 +198,7 @@ def insert_transactions_from_dict(tx_list: list[dict], s: sessionmaker, block_ha
 # Block + txs
 # --------------
 def insert_block_with_txs(block: dict, engine: Engine):
+    logger.info(f"Adding Block height: {block["height"]} and all it's transactions...")
     txs = block['tx']
     block_hash = block["hash"]
     for field in BLOCK_FIELDS_TO_EXCLUDE:
@@ -205,6 +207,7 @@ def insert_block_with_txs(block: dict, engine: Engine):
         for field in TRANSACTION_FIELDS_TO_EXCLUDE:
             del tx[field]
     with Session(engine) as s:
-        #TODO: this method should still take a list of dict?
-        insert_blocks_from_dict([block],s)
+        insert_blocks_from_dict([block],s)    
         insert_transactions_from_dict(txs, s, block_hash)
+        logger.info(f"Finished processing block {block['height']}.")
+        
