@@ -1,7 +1,9 @@
+import hashlib
 import requests
 import json
 import os
 
+from pathlib import Path
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter, Retry
 from requests.exceptions import HTTPError
@@ -10,6 +12,9 @@ import logger
 import context_manager
 
 logger = logger.setup_logging(__name__)
+
+# TODO: replace with Redis.
+RPC_CACHE_DIR = Path("var/rpc_cache")
 
 # ------------------------------------------------------------
 class GetBlockClient:
@@ -43,19 +48,29 @@ class GetBlockClient:
         return s
 
     def call_rpc(self, verb: str, method: str, params: list = []):
+        cache_key = hashlib.sha256(f"{method}:{params}".encode()).hexdigest()
+        cache_file = RPC_CACHE_DIR / f"{method}_{cache_key}.json"
+        if cache_file.exists():
+            logger.info(f"Cache hit:  {method}  with params: {params}")
+            return json.loads(cache_file.read_text())
+
         logger.info(f"Calling RPC:  {verb}  {method}  with params: {params}")
         with context_manager.fail_on_error():
             payload = json.dumps({**self._payload, 'method': method, 'params': params})
             response = self._session.request(
-                verb, 
-                self.rpc_url, 
-                headers=self._headers, 
+                verb,
+                self.rpc_url,
+                headers=self._headers,
                 data=payload
             )
             response.raise_for_status()
             if response.status_code == 200:
                 logger.info("Request succeded.")
-            return response.json()['result']
+            result = response.json()['result']
+
+            RPC_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps(result))
+            return result
 
 # ------------------------------------------------------------
 class Blocks(GetBlockClient):
